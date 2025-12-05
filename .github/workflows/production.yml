@@ -1,0 +1,51 @@
+name: Build Production
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Deploy
+        uses: appleboy/ssh-action@v0.1.2
+        with:
+          host: ${{secrets.SSH_HOST}}
+          key: ${{secrets.SSH_KEY}}
+          username: ${{secrets.SSH_USERNAME}}
+          script: |
+            cd /opt/provey/project/fe-dashboard-admin
+            source ~/.bash_profile
+            nvm use 18
+            git fetch --all
+            git checkout origin/main
+            
+            # Build new Docker image with environment variables
+            docker build -t fe-dashboard-admin:new --build-arg VITE_BASE_URL=${{vars.VITE_BASE_URL}} .
+            
+            # Start new container on temporary port
+            docker run -d -p 3021:80 --name fe-dashboard-admin-new fe-dashboard-admin:new
+            
+            # Wait for container to start up (adjust sleep time as needed)
+            sleep 10
+            
+            # Basic health check
+            if curl -s http://localhost:3021 > /dev/null; then
+              # Stop and remove old container
+              docker rm -f fe-dashboard-admin || true
+              
+              # Start new container with production port
+              docker run -d -p 3023:80 --name fe-dashboard-admin fe-dashboard-admin:new
+              
+              # Clean up temporary container
+              docker rm -f fe-dashboard-admin-new
+              
+              echo 'Deployment successful!'
+              exit 0
+            else
+              # If health check fails, clean up and exit with error
+              docker rm -f fe-dashboard-admin-new
+              echo 'Deployment failed - new container health check failed'
+              exit 1
+            fi

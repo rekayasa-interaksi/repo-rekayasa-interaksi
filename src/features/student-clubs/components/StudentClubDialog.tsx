@@ -1,0 +1,296 @@
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { BookOpen, Plus, Save } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { useForm } from 'react-hook-form';
+import { useCreateStudentClub, useUpdateStudentClub } from '../queries';
+import { StudentClubFormSchema } from '../schemas';
+import type { StudentClub, StudentClubFormData } from '../types';
+import { Textarea } from '@/components/ui/textarea';
+
+interface StudentClubDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  mode: 'create' | 'edit';
+  defaultValues?: StudentClub;
+}
+
+export function StudentClubDialog({
+  open,
+  onOpenChange,
+  mode,
+  defaultValues,
+}: StudentClubDialogProps) {
+  const createMutation = useCreateStudentClub();
+  const updateMutation = useUpdateStudentClub();
+  const isSubmitting = createMutation.isPending || updateMutation.isPending;
+  const isEditing = mode === 'edit';
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const form = useForm<StudentClubFormData>({
+      resolver: zodResolver(StudentClubFormSchema(isEditing)),
+      defaultValues: isEditing && defaultValues
+        ? {
+            name: defaultValues.name || '',
+            description: defaultValues.description || '',
+            logo: undefined,
+            image: undefined,
+          }
+        : {
+            name: '',
+            description: '',
+            logo: undefined,
+            image: undefined,
+          },
+    });
+
+  useEffect(() => {
+    if (open) {
+      form.reset(
+        isEditing && defaultValues
+          ? {
+              name: defaultValues.name || '',
+              description: defaultValues.description || '',
+              logo: undefined,
+              image: undefined,
+            }
+          : {
+              name: '',
+              description: '',
+              logo: undefined,
+              image: undefined,
+            },
+      );
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }, [open, isEditing, defaultValues, form]);
+
+  const onSubmit = async (data: StudentClubFormData) => {
+    try {
+      const formData = new FormData();
+      formData.append('name', data.name);
+      formData.append('description', data.description);
+      if (data.logo) {
+        formData.append('logo', data.logo);
+      }
+      if (data.image) {
+        formData.append('image', data.image);
+      }
+
+      if (isEditing && defaultValues) {
+        await updateMutation.mutateAsync({ id: defaultValues.id, payload: formData });
+      } else {
+        await createMutation.mutateAsync(formData);
+      }
+      onOpenChange(false);
+      form.reset();
+    } catch (error) {
+      console.error('Submission error:', error);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[500px] p-0 overflow-hidden">
+        <div className="bg-primary/5 p-6 flex items-center gap-4 border-b">
+          <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+            {isEditing ? <BookOpen className="h-6 w-6" /> : <Plus className="h-6 w-6" />}
+          </div>
+          <DialogHeader className="gap-1.5">
+            <DialogTitle className="text-xl">
+              {isEditing ? 'Edit Student Club' : 'Tambah Student Club'}
+            </DialogTitle>
+            <DialogDescription className="text-sm opacity-90">
+              {isEditing
+                ? 'Perbarui detail student club di bawah ini.'
+                : 'Isi detail untuk student club baru di bawah ini.'}
+            </DialogDescription>
+          </DialogHeader>
+        </div>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 p-6">
+            <div className="space-y-4">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-base font-medium">Nama Club</FormLabel>
+                    <FormControl>
+                      <div className="group relative">
+                        <Input
+                          placeholder="Masukkan nama club"
+                          {...field}
+                          value={field.value || ''}
+                          onChange={(e) => field.onChange(e.target.value)}
+                          className="h-11 px-4 bg-background border-input focus-visible:ring-2 focus-visible:ring-ring/20"
+                        />
+                      </div>
+                    </FormControl>
+                    <FormMessage className="text-xs mt-1.5" />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-base font-medium">Deskripsi Club</FormLabel>
+                    <FormControl>
+                      <div className="group relative">
+                        <Textarea
+                          placeholder="Masukkan deskripsi club"
+                          {...field}
+                          value={field.value || ''}
+                          onChange={(e) => field.onChange(e.target.value)}
+                          className="h-11 px-4 bg-background border-input focus-visible:ring-2 focus-visible:ring-ring/20"
+                        />
+                      </div>
+                    </FormControl>
+                    <FormMessage className="text-xs mt-1.5" />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="logo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-base font-medium">
+                      Logo {isEditing ? '(Opsional)' : ''}
+                    </FormLabel>
+                    {isEditing && defaultValues?.logo_url && (
+                      <div className="mt-2 mb-4">
+                        <p className="text-sm font-medium">Logo Saat Ini:</p>
+                        <img
+                          src={defaultValues.logo_url}
+                          alt="Current Image"
+                          className="h-20 w-20 object-cover rounded-md"
+                          onError={(e) => (e.currentTarget.src = '/path/to/fallback-image.png')}
+                        />
+                      </div>
+                    )}
+                    <FormControl>
+                      <Input
+                        type="file"
+                        accept="image/jpeg,image/jpg,image/png,image/webp"
+                        ref={fileInputRef}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          field.onChange(file);
+                        }}
+                        className="h-11 px-4 bg-background border-input focus-visible:ring-2 focus-visible:ring-ring/20"
+                      />
+                    </FormControl>
+                    {isEditing && (
+                      <p className="text-xs text-muted-foreground mt-1.5">
+                        Biarkan kosong untuk mempertahankan logo saat ini.
+                      </p>
+                    )}
+                    <FormMessage className="text-xs mt-1.5" />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="image"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-base font-medium">
+                      Gambar {isEditing ? '(Opsional)' : ''}
+                    </FormLabel>
+                    {isEditing && defaultValues?.image_url && (
+                      <div className="mt-2 mb-4">
+                        <p className="text-sm font-medium">Gambar Saat Ini:</p>
+                        <img
+                          src={defaultValues.image_url}
+                          alt="Current Image"
+                          className="h-20 w-20 object-cover rounded-md"
+                          onError={(e) => (e.currentTarget.src = '/path/to/fallback-image.png')}
+                        />
+                      </div>
+                    )}
+                    <FormControl>
+                      <Input
+                        type="file"
+                        accept="image/jpeg,image/jpg,image/png,image/webp"
+                        ref={fileInputRef}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          field.onChange(file);
+                        }}
+                        className="h-11 px-4 bg-background border-input focus-visible:ring-2 focus-visible:ring-ring/20"
+                      />
+                    </FormControl>
+                    {isEditing && (
+                      <p className="text-xs text-muted-foreground mt-1.5">
+                        Biarkan kosong untuk mempertahankan gambar saat ini.
+                      </p>
+                    )}
+                    <FormMessage className="text-xs mt-1.5" />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <DialogFooter className="flex flex-row gap-2 pt-2 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={isSubmitting}
+                className="flex-1 hover:text-white hover:bg-red-500 transition-all duration-300"
+              >
+                Batal
+              </Button>
+              <Button type="submit" disabled={isSubmitting} className="flex-1 gap-2">
+                {isSubmitting ? (
+                  isEditing ? (
+                    'Menyimpan...'
+                  ) : (
+                    'Membuat...'
+                  )
+                ) : (
+                  <>
+                    {isEditing ? (
+                      <>
+                        <Save className="h-4 w-4" />
+                        Simpan
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="h-4 w-4" />
+                        Buat
+                      </>
+                    )}
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
