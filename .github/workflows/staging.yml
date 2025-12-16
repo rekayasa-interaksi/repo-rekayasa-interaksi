@@ -1,0 +1,74 @@
+name: Build Staging
+on:
+  push:
+    branches: [release]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Deploy
+        uses: appleboy/ssh-action@v0.1.2
+        with:
+          host: ${{secrets.SSH_HOST}}
+          key: ${{secrets.SSH_KEY}}
+          username: ${{secrets.SSH_USERNAME}}
+
+          script: |
+            cd /opt/provey/project/be-digistar-club
+            source ~/.bash_profile
+            nvm use 18
+            git fetch --all
+            git checkout origin/release
+
+            # Build new Docker image
+            docker build --no-cache -f Dockerfile.staging -t staging-be-digistar-club:new \
+              --build-arg DATABASE_URL=${{vars.DATABASE_URL}} \
+              --build-arg BASE_URL_STORAGE=${{vars.BASE_URL_STORAGE}} \
+              --build-arg SUPPORT_API_URL=${{vars.SUPPORT_API_URL}} \
+              --build-arg SUPPORT_API_KEY=${{vars.SUPPORT_API_KEY}} \
+              --build-arg EMAIL_SERVICE=${{vars.EMAIL_SERVICE}} \
+              --build-arg EMAIL_ADDRESS=${{vars.EMAIL_ADDRESS}} \
+              --build-arg EMAIL_KEY_PASSWORD=${{vars.EMAIL_KEY_PASSWORD}} \
+              --build-arg JWT_KEY_MEMBER=${{vars.JWT_KEY_MEMBER}} \
+              --build-arg EVENT_ID_NEW_MEMBER=${{vars.EVENT_ID_NEW_MEMBER}} \
+              --build-arg PROGRAM_CATEGORIES_ID=${{vars.PROGRAM_CATEGORIES_ID}} \
+              --build-arg PROGRAM_TYPES_ID=${{vars.PROGRAM_TYPES_ID}} \
+              --build-arg TMS_BASE_URL=${{vars.TMS_BASE_URL}} \
+              --build-arg TMS_EMAIL=${{vars.TMS_EMAIL}} \
+              --build-arg TMS_PASSWORD=${{vars.TMS_PASSWORD}} \
+              --build-arg JWT_KEY_ADMIN=${{vars.JWT_KEY_ADMIN}} .
+
+            # Start new container on temporary port
+            docker run -d -p 3016:3000 --name staging-be-digistar-club-new staging-be-digistar-club:new
+
+            # Wait for container to start with retries
+            for i in {1..5}; do
+              if curl -s http://localhost:3016 > /dev/null; then
+                echo "Health check passed!"
+                break
+              fi
+              echo "Health check attempt $i failed, retrying in 10 seconds..."
+              sleep 10
+            done
+
+            if [ $i -eq 5 ]; then
+              echo "Health check failed, capturing logs..."
+              docker logs staging-be-digistar-club-new
+              docker rm -f staging-be-digistar-club-new
+              echo "Deployment failed - new container health check failed"
+              exit 1
+            fi
+
+            # Stop and remove old container
+            docker rm -f staging-be-digistar-club || true
+
+            # Start new container with production port
+            docker run -d -p 3017:3000 --name staging-be-digistar-club staging-be-digistar-club:new
+
+            # Clean up temporary container
+            docker rm -f staging-be-digistar-club-new
+
+            echo "Deployment successful!"
+            exit 0
