@@ -1,0 +1,66 @@
+name: Build Production
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy
+        uses: appleboy/ssh-action@v0.1.2
+        with:
+          host: ${{secrets.SSH_HOST}}
+          key: ${{secrets.SSH_KEY}}
+          username: ${{secrets.SSH_USERNAME}}
+
+          script: |
+            cd /opt/provey/project/be-digistar-club
+            source ~/.bash_profile
+            nvm use 18
+            git fetch --all
+            git checkout origin/master
+            
+            # Build new Docker image
+            docker build --no-cache -f Dockerfile.prod -t be-digistar-club:new  \
+              --build-arg DATABASE_URL=${{vars.DATABASE_URL}} \
+              --build-arg BASE_URL_STORAGE=${{vars.BASE_URL_STORAGE}} \
+              --build-arg SUPPORT_API_URL=${{vars.SUPPORT_API_URL}} \
+              --build-arg SUPPORT_API_KEY=${{vars.SUPPORT_API_KEY}} \
+              --build-arg EMAIL_SERVICE=${{vars.EMAIL_SERVICE}} \
+              --build-arg EMAIL_ADDRESS=${{vars.EMAIL_ADDRESS}} \
+              --build-arg EMAIL_KEY_PASSWORD=${{vars.EMAIL_KEY_PASSWORD}} \
+              --build-arg JWT_KEY_MEMBER=${{vars.JWT_KEY_MEMBER}} \
+              --build-arg EVENT_ID_NEW_MEMBER=${{vars.EVENT_ID_NEW_MEMBER}} \
+              --build-arg PROGRAM_CATEGORIES_ID=${{vars.PROGRAM_CATEGORIES_ID}} \
+              --build-arg PROGRAM_TYPES_ID=${{vars.PROGRAM_TYPES_ID}} \
+              --build-arg TMS_BASE_URL=${{vars.TMS_BASE_URL}} \
+              --build-arg TMS_EMAIL=${{vars.TMS_EMAIL}} \
+              --build-arg TMS_PASSWORD=${{vars.TMS_PASSWORD}} \
+              --build-arg JWT_KEY_ADMIN=${{vars.JWT_KEY_ADMIN}} .
+            
+            # Start new container on temporary port
+            docker run -d -p 3011:3000 --name be-digistar-club-new be-digistar-club:new
+            
+            # Wait for container to start up (adjust sleep time as needed)
+            sleep 30
+            
+            # Basic health check
+            if curl -s http://localhost:3011 > /dev/null; then
+              # Stop and remove old container
+              docker rm -f be-digistar-club || true
+              
+              # Start new container with production port
+              docker run -d -p 3013:3000 --name be-digistar-club be-digistar-club:new
+              
+              # Clean up temporary container
+              docker rm -f be-digistar-club-new
+              
+              echo 'Deployment successful!'
+              exit 0
+            else
+              # If health check fails, clean up and exit with error
+              docker rm -f be-digistar-club-new
+              echo 'Deployment failed - new container health check failed'
+              exit 1
+            fi
