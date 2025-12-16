@@ -10,6 +10,7 @@ Kelas: A
 | NIM | Nama | Username GitHub |
 |------|---------------------------|----------------|
 | 202110370311449 | Nugroho Adi| NUGROHOADI11 |
+| 202210370311125 | Hanum Zaqiah P.| hanumzaqiah |
 
 ## Link Figma
 https://www.figma.com/design/NoSNkmK0eYWk3l6qU7HYYS/Mockup?node-id=0-1&p=f
