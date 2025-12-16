@@ -11,6 +11,7 @@ Kelas: A
 |------|---------------------------|----------------|
 | 202110370311449 | Nugroho Adi| NUGROHOADI11 |
 | 202210370311125 | Hanum Zaqiah P.| hanumzaqiah |
+| 202210370311136 | Shelly Kurnia U.| KurulShelly | 
 
 ## Link Figma
 https://www.figma.com/design/NoSNkmK0eYWk3l6qU7HYYS/Mockup?node-id=0-1&p=f
