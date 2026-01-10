@@ -2,9 +2,9 @@ import { Type } from 'class-transformer';
 import { IsNotEmpty, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class FeedbackEventDto {
-  @IsString()
-  @IsNotEmpty()
-  duration: string;
+  // @IsString()
+  // @IsNotEmpty()
+  // duration: string;
 
   @IsString()
   @IsNotEmpty()

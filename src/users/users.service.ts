@@ -136,7 +136,7 @@ export class UsersService {
       order,
       take: Number(limit),
       skip: (Number(page) - 1) * Number(limit),
-      select: ['id', 'unique_number', 'name', 'email', 'created_at', 'is_validate', 'is_active', 'password'],
+      select: ['id', 'unique_number', 'name', 'email', 'created_at', 'is_validate', 'is_active', 'password', 'phone', 'regional_origin', 'generation'],
       relations: ['student_campus', 'domisili', 'major_campus'],
     });
 
@@ -153,6 +153,16 @@ export class UsersService {
     }
 
     return { status: 'success', message: 'Users retrieved successfully!', data, metaData };
+  }
+
+  async checkDataUser(userPayload: UserPayloadDto) {
+    const user = await this.usersRepository.findOne({ where: { id: userPayload.sub, birthday: Not(IsNull()), email: Not(IsNull()), name: Not(IsNull()), phone: Not(IsNull()), password: Not(IsNull()), status: Not(IsNull()), regional_origin: Not(IsNull()), gender: Not(IsNull()), generation: Not(IsNull()), program_alumni: Not(IsNull()), student_campus: Not(IsNull()), major_campus: Not(IsNull()), domisili: Not(IsNull()) } });
+    
+    if (!user) {
+      throw new UnauthorizedException('Data pengguna tidak lengkap');
+    }
+
+    return { status: 'success', message: 'Data pengguna sudah lengkap' };
   }
   
   async allDataMonitoring() {
@@ -520,6 +530,13 @@ export class UsersService {
       dataMember.student_chapter = studentChapter;
     }
 
+    if (createMemberDto.program_alumni_id) {
+      const programAlumni = await this.programAlumniRepository.findOne({
+        where: { id: createMemberDto.program_alumni_id },
+      });
+      dataMember.program_alumni = programAlumni;
+    }
+
     if (social_media) {
       socialMedia = this.socialMediaRepository.create({
         instagram: social_media?.instagram,
@@ -528,6 +545,7 @@ export class UsersService {
       });
       dataMember.social_media = socialMedia;
     }
+    dataMember.regional_origin = createMemberDto.regional_origin;
 
     const roleMember = await this.rolesRepository.findOne({
       where: { name: 'public' }
@@ -1024,7 +1042,8 @@ export class UsersService {
       message: 'Get Information Member successfully!',
       data: {
         ...data,
-        level: informationUser.participant_level
+        level: informationUser.participant_level,
+        talent_status: informationUser.talent_status
       }
     }
   }
@@ -1204,6 +1223,13 @@ export class UsersService {
           majorChanged = true;
         }
         existingUser.major_campus = major;
+      }
+
+      if (memberData.program_alumni_id) {
+        const programAlumni = await this.programAlumniRepository.findOne({
+          where: { id: memberData.program_alumni_id },
+        });
+        existingUser.program_alumni = programAlumni;
       }
 
       Object.assign(existingUser, memberData, {

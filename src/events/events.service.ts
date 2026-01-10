@@ -110,6 +110,9 @@ export class EventsService {
 
     @InjectRepository(EmployerBranding)
     private readonly employerBrandingRepository: Repository<EmployerBranding>,
+
+    @InjectRepository(Programs)
+    private readonly programRepository: Repository<Programs>,
   ) {}
 
   async createEvent(
@@ -134,21 +137,29 @@ export class EventsService {
         status: eventsDto.status,
         type: eventsDto.type,
         rules: eventsDto.rules,
+        program_category_id: eventsDto.program_category_id,
+        program_type_id: eventsDto.program_type_id,
       });
       await queryRunner.manager.save(event);
+
+      const allEventOrganizations = [];
 
       if (eventsDto.student_club_ids?.length > 0) {
         const studentClubs = await this.studentClubRepository.find({
           where: { id: In(eventsDto.student_club_ids) },
         });
-        studentClubName = studentClubs[0].name
         if (!studentClubs.length) throw new NotFoundException('Student clubs not found');
 
-        const eventOrganizations = studentClubs.map((club) =>
-          this.eventOrganizationsRepository.create({ event, student_club: club }),
+        studentClubName = studentClubs[0].name;
+
+        allEventOrganizations.push(
+          ...studentClubs.map(club =>
+            this.eventOrganizationsRepository.create({
+              event,
+              student_club: club,
+            }),
+          ),
         );
-        event.event_organizations = eventOrganizations
-        await queryRunner.manager.save(eventOrganizations);
       }
 
       if (eventsDto.student_chapter_ids?.length > 0) {
@@ -157,24 +168,36 @@ export class EventsService {
         });
         if (!studentChapters.length) throw new NotFoundException('Student chapters not found');
 
-        const eventOrganizations = studentChapters.map((chapter) =>
-          this.eventOrganizationsRepository.create({ event, student_chapter: chapter }),
+        allEventOrganizations.push(
+          ...studentChapters.map(chapter =>
+            this.eventOrganizationsRepository.create({
+              event,
+              student_chapter: chapter,
+            }),
+          ),
         );
-        event.event_organizations = eventOrganizations
-        await queryRunner.manager.save(eventOrganizations);
       }
 
       if (eventsDto.external_organization_ids?.length > 0) {
         const externalOrganizations = await this.externalOrganizationRepository.find({
           where: { id: In(eventsDto.external_organization_ids) },
         });
-        if (!externalOrganizations.length) throw new NotFoundException('External organizations not found');
+        if (!externalOrganizations.length)
+          throw new NotFoundException('External organizations not found');
 
-        const eventOrganizations = externalOrganizations.map((org) =>
-          this.eventOrganizationsRepository.create({ event, external_organization: org }),
+        allEventOrganizations.push(
+          ...externalOrganizations.map(org =>
+            this.eventOrganizationsRepository.create({
+              event,
+              external_organization: org,
+            }),
+          ),
         );
-        event.event_organizations = eventOrganizations
-        await queryRunner.manager.save(eventOrganizations);
+      }
+
+      if (allEventOrganizations.length > 0) {
+        event.event_organizations = allEventOrganizations;
+        await queryRunner.manager.save(allEventOrganizations);
       }
 
       let program: Programs;
@@ -414,6 +437,7 @@ export class EventsService {
     req: Request,
     files: { image?: Express.Multer.File[] }
   ) {
+    let campusId, majorId;
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -421,7 +445,7 @@ export class EventsService {
     try {
       let genderU = "";
       const openApiHelper = new CommonOpenApi();
-      const { detail_event_id, duration, ...dataFeedback } = feedbackEventDto;
+      const { detail_event_id, ...dataFeedback } = feedbackEventDto;
 
       if (files?.image?.[0] && files.image[0].size > 1 * 1024 * 1024) {
         throw new BadRequestException("File melebihi batas ukuran 1MB");
@@ -468,10 +492,20 @@ export class EventsService {
       if (!eventMember) throw new NotFoundException("Anda tidak terdaftar pada event ini");
       if (eventMember.attend) throw new BadRequestException("Anda sudah presensi untuk event ini");
 
+      if (!eventMember.employer_branding) {
+        eventMember.employer_branding = queryRunner.manager.create(
+          EmployerBranding,
+          {
+            event_member: eventMember,
+            created_by: user.id,
+          }
+        );
+      }
+
       const fileData = await this.uploadsService.saveFileData(files, "evidences");
 
       eventMember.attend = true;
-      eventMember.duration = duration as DurationEvents;
+      // eventMember.duration = duration as DurationEvents;
       eventMember.material_quality = dataFeedback.material_quality;
       eventMember.delivery_quality = dataFeedback.delivery_quality;
       eventMember.next_topic = dataFeedback.next_topic;
@@ -495,9 +529,23 @@ export class EventsService {
 
       await queryRunner.manager.save(eventMember);
 
-      const campusTms = await openApiHelper.getCampus(1, 10, user.student_campus.institute);
+      let campusTms = await openApiHelper.getCampus(1, 10, user.student_campus.institute);
 
-      const majorTms = await openApiHelper.getMajorCampus(1, 10, campusTms[0].id, user.major_campus.major)
+      if (campusTms.length > 0) {
+        campusId = campusTms[0].id
+      } else {
+        campusTms = await openApiHelper.createCampus(user.student_campus.institute)
+        campusId = campusTms.id
+      }
+
+      let majorTms = await openApiHelper.getMajorCampus(1, 10, campusId, user.major_campus.major)
+
+      if (majorTms.length > 0) {
+        majorId = majorTms[0].id
+      } else {
+        majorTms = await openApiHelper.createMajorCampus(campusId, user.major_campus.major)
+        majorId = majorTms.id
+      }
 
       const dataUserPayload: ParticipantDto = {
         event_id: detailEvent.client_id,
@@ -508,7 +556,7 @@ export class EventsService {
         date_of_birth: user.birthday,
         email: user.email,
         phone_number: user.phone,
-        major_id: majorTms[0].id,
+        major_id: majorId,
         instagram: user.social_media.instagram,
         linkedin: user.social_media.linkedin,
       };
@@ -829,7 +877,7 @@ export class EventsService {
     for (const detailEvent of detailEvents) {
       const members = await this.eventMemberRepository.find({
         where: { detail_event: { id: detailEvent.id }, suggest: Not(IsNull()), attend: true, evidence_path: Not(IsNull()), duration: Not(IsNull()), material_quality: Not(IsNull()), delivery_quality: Not(IsNull()), next_topic: Not(IsNull()) },
-        relations: ['user'],
+        relations: ['user', 'employer_branding'],
       });
       feedbacks.push({
         detail_event: detailEvent,
@@ -845,6 +893,14 @@ export class EventsService {
           material_quality: member.material_quality,
           delivery_quality: member.delivery_quality,
           next_topic: member.next_topic,
+          rating: member.rating,
+          experience: member.experience,
+          testimoni: member.testimoni,
+          improvement: member.improvement,
+          favorite: member.favorite,
+          recomendation_reason: member.employer_branding?.recomendation_reason,
+          recomendation_company: member.employer_branding?.recomendation_company,
+          alteration: member.employer_branding?.alteration,
         })),
       });
     }
@@ -1022,6 +1078,12 @@ export class EventsService {
       message: 'Events retrieved successfully!',
       data: data.map((event) => {
         const eventOrgs = event.event_organizations || [];
+        const isJoinedEvent = 
+          userPayload && (userPayload.role === 'member' || userPayload.role === 'public')
+            ? (event.detail_events?.length > 0 
+              ? event.detail_events.every(detail => detailEventIdsJoined.has(detail.id))
+              : false)
+            : false;        
         const studentClubs = eventOrgs
           .filter((eo) => eo.student_club)
           .map((eo) => ({
@@ -1091,6 +1153,7 @@ export class EventsService {
             return event.links;
           })(),
           is_registered: userPayload && (userPayload.role === 'member'||userPayload.role === 'public') ? eventIdsRegistered.has(event.id) : false,
+          is_joined: isJoinedEvent,
           event_organizations: {
             student_clubs: studentClubs,
             student_chapters: studentChapters,
@@ -1498,7 +1561,6 @@ export class EventsService {
     files: { image?: Express.Multer.File[] },
     userPayload: UserPayloadDto
   ) {
-    console.log('Data: ', updateData)
     const openApiHelper = new CommonOpenApi();
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
@@ -1614,6 +1676,16 @@ export class EventsService {
         }
       }
 
+      if (updateData.program_id != event.program?.id) {
+        const program = await queryRunner.manager.findOne(Programs, {
+          where: { id: updateData.program_id },
+        });
+
+        if (!program) throw new NotFoundException('Program not found');
+
+        event.program = program;
+      }
+
       event.name = updateData.name;
       event.description = updateData.description;
       event.place = updateData.place;
@@ -1621,6 +1693,8 @@ export class EventsService {
       event.rules = updateData.rules;
       event.event_activate = updateData.event_activated;
       event.status = updateData.status;
+      event.program_category_id = updateData.program_category_id;
+      event.program_type_id = updateData.program_type_id;
       event.updated_at = new Date();
       event.updated_by = userPayload.sub;
 
@@ -1720,8 +1794,6 @@ export class EventsService {
           })
         );
       }
-
-      console.log('File Data: ', filesData)
 
       if (filesData?.images?.length > 0) {
         for (let i = 0; i < filesData.images.length; i++) {

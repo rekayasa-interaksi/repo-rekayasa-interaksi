@@ -58,6 +58,14 @@ export class UsersController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('member', 'public')
+  @Get('checking-data-user')
+  async checkingDataUser(@Req() req, @Res() res) {
+    const response = await this.usersService.checkDataUser(req.user);
+    res.status(HttpStatus.OK).json(response);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('member', 'public')
   @Put('update-profile')
   @UseInterceptors(FileFieldsInterceptor([
     { name: 'image_profile', maxCount: 1 },

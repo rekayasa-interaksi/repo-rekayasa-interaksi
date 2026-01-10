@@ -58,6 +58,10 @@ export class CreateMemberDto {
   student_chapter_id?: string;
 
   @IsString()
+  @IsOptional()
+  regional_origin?: string;
+
+  @IsString()
   @MinLength(6)
   password: string;
 

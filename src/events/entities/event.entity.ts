@@ -50,6 +50,12 @@ export class Event {
   @Column({ type: 'text', nullable: true })
   type: string;
 
+  @Column({ nullable: true })
+  program_category_id: string;
+
+  @Column({ nullable: true })
+  program_type_id: string;
+
   @ManyToOne(() => Programs, { eager: true, cascade: true, nullable: true })
   @JoinColumn({ name: 'program_id' })
   program: Programs;

@@ -104,7 +104,7 @@ export class OrganizationalStructureService {
 
   async findAll(generation?: string) {
     let where: FindOptionsWhere<OrganizationalStructure> = {};
-    where.generation = generation || new Date().getFullYear().toString();
+    where.generation = generation || '2025';
 
     const data = await this.orgRepo.find({
       where,

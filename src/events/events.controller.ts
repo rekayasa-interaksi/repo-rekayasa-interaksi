@@ -22,7 +22,6 @@ import { Public, Roles } from '../auth/decorators/roles.decorators';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { DetailEvent } from './entities/detail-event.entity';
 import { Event } from './entities/event.entity';
-import { query } from 'express';
 import { SendLinkMeetingDto } from './dto/send-link-meet.dto';
 import { AchievementDto } from './dto/achievement.dto';
 import { EventDocumentationsDto } from './dto/event-documentations.dto';
@@ -51,7 +50,6 @@ export class EventsController {
     @Body() body: EventsDto,
     @UploadedFiles() files: { image?: Express.Multer.File[] }
   ) {
-    console.log('Data Event: ', body)
     if (typeof body.detail_events === 'string') {
       body.detail_events = JSON.parse(body.detail_events);
     }
